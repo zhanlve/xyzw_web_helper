@@ -23,7 +23,11 @@
       </n-alert>
 
       <div class="cloud-account-bar">
-        <n-space align="center" justify="space-between" class="cloud-account-content">
+        <n-space
+          align="center"
+          justify="space-between"
+          class="cloud-account-content"
+        >
           <div class="cloud-account-info">
             <n-tag v-if="authStore.isAuthenticated" type="success" size="small">
               已登录：{{ authStore.userInfo?.username }}
@@ -40,7 +44,7 @@
               云端内存模式
             </n-tag>
           </div>
-          <n-space align="center" size="small">
+          <n-space align="center" size="small" class="cloud-actions">
             <n-button
               v-if="!authStore.isAuthenticated"
               size="small"
@@ -172,14 +176,22 @@
       <!-- Token列表 -->
       <div v-if="tokenStore.hasTokens" class="tokens-section">
         <div class="section-header">
-          <n-space align="center">
+          <n-space align="center" class="section-main-actions">
             <h2>我的Token列表 ({{ tokenStore.gameTokens.length }}个)</h2>
-            <n-radio-group v-model:value="viewMode" size="small">
+            <n-radio-group
+              v-model:value="viewMode"
+              size="small"
+              class="view-mode-switch"
+            >
               <n-radio-button value="list">列表</n-radio-button>
               <n-radio-button value="card">卡片</n-radio-button>
             </n-radio-group>
-            <n-divider vertical style="height: 24px"></n-divider>
-            <n-button-group size="small">
+            <n-divider
+              vertical
+              class="section-divider"
+              style="height: 24px"
+            ></n-divider>
+            <n-button-group size="small" class="sort-actions">
               <n-button
                 @click="toggleSort('name')"
                 :type="sortConfig.field === 'name' ? 'primary' : 'default'"
@@ -448,13 +460,20 @@
             style="margin-bottom: 8px"
             hoverable
             @click="selectToken(token)"
-            :class="{ active: selectedTokenId === token.id }"
+            :class="{
+              active: selectedTokenId === token.id,
+              'token-list-card': true,
+            }"
           >
-            <n-space justify="space-between" align="center">
+            <n-space
+              justify="space-between"
+              align="center"
+              class="token-list-row"
+            >
               <!-- Info -->
-              <n-space align="center" :size="6">
+              <n-space align="center" :size="6" class="token-list-info">
                 <!-- 连接状态 - 移动到最前端显示 -->
-                <div style="min-width: 65px">
+                <div class="token-status-cell">
                   <a-badge
                     :status="getTokenStyle(token.id)"
                     :text="getConnectionStatusText(token.id)"
@@ -470,16 +489,11 @@
                 />
 
                 <!-- Token基本信息 -->
-                <div style="min-width: 100px">
+                <div class="token-main-cell">
                   <div
-                    style="
-                      display: flex;
-                      align-items: center;
-                      flex-wrap: wrap;
-                      gap: 2px;
-                    "
+                    class="token-title-line"
                   >
-                    <span style="font-weight: bold; font-size: 0.95em">{{
+                    <span class="token-list-name">{{
                       token.name
                     }}</span>
                     <n-tag
@@ -491,12 +505,7 @@
                     <!-- 备注信息 - 显示在服务器信息后面 -->
                     <div
                       v-if="editingRemark === token.id"
-                      style="
-                        font-size: 0.75em;
-                        display: flex;
-                        align-items: center;
-                        gap: 4px;
-                      "
+                      class="token-list-remark-edit"
                       @click.stop
                     >
                       <i
@@ -511,22 +520,12 @@
                         @keyup.enter="saveRemark(token)"
                         @keyup.esc="cancelEditRemark()"
                         autofocus
-                        style="width: 150px"
+                        class="token-list-remark-input"
                       />
                     </div>
                     <div
                       v-else
-                      style="
-                        font-size: 0.75em;
-                        color: var(--text-secondary);
-                        white-space: nowrap;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        cursor: pointer;
-                        display: flex;
-                        align-items: center;
-                        gap: 4px;
-                      "
+                      class="token-list-remark"
                       @click.stop="startEditRemark(token)"
                     >
                       <i
@@ -545,7 +544,7 @@
               </n-space>
 
               <!-- Actions -->
-              <n-space>
+              <n-space class="token-list-actions">
                 <!-- 存储类型 -->
                 <n-tag
                   size="small"
@@ -1917,6 +1916,10 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.cloud-actions {
+  flex-wrap: nowrap;
+}
+
 [data-theme="dark"] .cloud-account-bar {
   background: rgba(45, 55, 72, 0.9);
   border-color: rgba(255, 255, 255, 0.1);
@@ -2110,6 +2113,14 @@ onUnmounted(() => {
   flex-wrap: nowrap;
 }
 
+.section-main-actions {
+  min-width: 0;
+}
+
+.sort-actions {
+  flex-wrap: nowrap;
+}
+
 .tokens-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -2185,6 +2196,77 @@ onUnmounted(() => {
   &::-webkit-scrollbar-thumb:hover {
     background: var(--border-dark);
   }
+}
+
+.token-list-card {
+  border: 1px solid var(--border-light);
+
+  &.active {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+  }
+}
+
+.token-list-row {
+  width: 100%;
+}
+
+.token-list-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.token-status-cell {
+  min-width: 65px;
+  flex-shrink: 0;
+}
+
+.token-main-cell {
+  min-width: 100px;
+  max-width: min(42vw, 360px);
+}
+
+.token-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.token-list-name {
+  font-weight: 700;
+  font-size: 0.95em;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-list-remark,
+.token-list-remark-edit {
+  font-size: 0.75em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.token-list-remark {
+  color: var(--text-secondary);
+  cursor: pointer;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-list-remark-input {
+  width: 150px;
+}
+
+.token-list-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
 }
 
 .card-header {
@@ -2460,12 +2542,130 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .token-import-page {
+    min-height: 100dvh;
+    padding: var(--spacing-md) 0
+      calc(var(--spacing-lg) + env(safe-area-inset-bottom));
+  }
+
   .container {
-    padding: 0 var(--spacing-md);
+    padding: 0 var(--spacing-sm);
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .header-content {
+    gap: var(--spacing-sm);
+  }
+
+  .header-top {
+    justify-content: space-between;
+  }
+
+  .brand-logo {
+    width: 44px;
+    height: 44px;
+  }
+
+  .header-content h1 {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .theme-toggle {
+    position: static;
+  }
+
+  .cloud-account-bar {
+    border-radius: var(--border-radius-medium);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+  }
+
+  .cloud-account-content {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: var(--spacing-sm) !important;
+    width: 100%;
+  }
+
+  .cloud-account-content :deep(.n-space) {
+    width: 100%;
+  }
+
+  .cloud-account-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    width: 100%;
+  }
+
+  .cloud-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-xs) !important;
+    width: 100%;
+  }
+
+  .cloud-actions :deep(.n-button) {
+    width: 100%;
+    min-width: 0;
+    padding: 0 8px;
+  }
+
+  :global(.token-import-modal .arco-modal) {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-height: 100dvh;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  :global(.token-import-modal .arco-modal-body) {
+    max-height: calc(100dvh - 80px);
+    overflow-y: auto;
+    padding: var(--spacing-md) !important;
+  }
+
+  .token-import-modal .card-header {
+    margin-bottom: var(--spacing-md);
+  }
+
+  .import-method-tabs {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .import-method-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .import-method-tabs :deep(.n-radio-group) {
+    flex-wrap: nowrap;
+  }
+
+  .import-method-tabs :deep(.n-radio-button) {
+    flex: 0 0 auto;
+  }
+
+  .tokens-section {
+    max-height: none;
+    border-radius: var(--border-radius-medium);
+    padding: var(--spacing-sm);
+    box-shadow: var(--shadow-small);
   }
 
   .tokens-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+    overflow: visible;
+    padding-right: 0;
   }
 
   .optional-fields {
@@ -2474,8 +2674,164 @@ onUnmounted(() => {
 
   .section-header {
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
     align-items: stretch;
+    position: static;
+    margin: calc(var(--spacing-sm) * -1) calc(var(--spacing-sm) * -1)
+      var(--spacing-sm);
+    padding: var(--spacing-sm);
+  }
+
+  .section-header h2 {
+    font-size: 1.05rem;
+    line-height: 1.35;
+    width: 100%;
+  }
+
+  .section-main-actions {
+    align-items: stretch !important;
+    flex-wrap: wrap !important;
+    gap: var(--spacing-sm) !important;
+    width: 100%;
+  }
+
+  .section-main-actions :deep(.n-space) {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .view-mode-switch {
+    display: flex !important;
+    width: 100%;
+  }
+
+  .view-mode-switch :deep(.n-radio-button) {
+    flex: 1;
+    text-align: center;
+  }
+
+  .section-divider {
+    display: none;
+  }
+
+  .sort-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-xs);
+    width: 100%;
+  }
+
+  .sort-actions :deep(.n-button) {
+    width: 100%;
+    min-width: 0;
+    font-size: 12px;
+    padding: 0 6px;
+  }
+
+  .header-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-xs);
+    overflow: visible;
+  }
+
+  .header-actions :deep(.n-button) {
+    width: 100%;
+    min-width: 0;
+    padding: 0 6px;
+  }
+
+  .tokens-list {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .token-list-card {
+    margin-bottom: var(--spacing-sm) !important;
+    border-radius: var(--border-radius-medium);
+  }
+
+  .token-list-card :deep(.n-card__content) {
+    padding: var(--spacing-sm) !important;
+  }
+
+  .token-list-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: var(--spacing-sm) !important;
+  }
+
+  .token-list-info {
+    width: 100%;
+    align-items: flex-start !important;
+    gap: var(--spacing-sm) !important;
+  }
+
+  .token-status-cell {
+    min-width: 0;
+    padding-top: 2px;
+  }
+
+  .token-main-cell {
+    flex: 1;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .token-title-line {
+    gap: var(--spacing-xs);
+  }
+
+  .token-list-name {
+    max-width: calc(100vw - 170px);
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .token-list-remark {
+    flex-basis: 100%;
+    max-width: 100%;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+  }
+
+  .token-list-remark-edit {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .token-list-remark-input {
+    width: 100%;
+  }
+
+  .token-list-actions {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-xs) !important;
+    width: 100%;
+  }
+
+  .token-list-actions :deep(.n-button),
+  .token-list-actions :deep(.n-tag) {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .token-list-actions :deep(.n-button) {
+    padding: 0 6px;
+  }
+
+  .token-display {
+    align-items: flex-start;
+  }
+
+  .token-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .token-timestamps {
@@ -2485,6 +2841,19 @@ onUnmounted(() => {
   .storage-info {
     flex-direction: column;
     gap: var(--spacing-sm);
+  }
+
+  :deep(.n-modal) {
+    max-width: calc(100vw - var(--spacing-md) * 2);
+  }
+
+  :deep(.n-card.n-modal) {
+    width: calc(100vw - var(--spacing-md) * 2) !important;
+  }
+
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
