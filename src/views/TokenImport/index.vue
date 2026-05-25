@@ -22,6 +22,64 @@
         {{ rateLimitMessage }}
       </n-alert>
 
+      <div class="cloud-account-bar">
+        <n-space align="center" justify="space-between" class="cloud-account-content">
+          <div class="cloud-account-info">
+            <n-tag v-if="authStore.isAuthenticated" type="success" size="small">
+              已登录：{{ authStore.userInfo?.username }}
+            </n-tag>
+            <n-tag v-else type="warning" size="small">
+              未登录：云端同步不可用
+            </n-tag>
+          </div>
+          <n-space align="center" size="small">
+            <n-button
+              v-if="!authStore.isAuthenticated"
+              size="small"
+              type="primary"
+              @click="router.push('/login')"
+            >
+              <template #icon>
+                <n-icon>
+                  <Key />
+                </n-icon>
+              </template>
+              登录/注册
+            </n-button>
+            <template v-else>
+              <n-button
+                size="small"
+                type="primary"
+                :loading="cloudSyncing"
+                @click="handleCloudUpload"
+              >
+                <template #icon>
+                  <n-icon>
+                    <SyncCircle />
+                  </n-icon>
+                </template>
+                上传云端
+              </n-button>
+              <n-button
+                size="small"
+                :loading="cloudSyncing"
+                @click="handleCloudDownload"
+              >
+                <template #icon>
+                  <n-icon>
+                    <SyncCircle />
+                  </n-icon>
+                </template>
+                下载云端
+              </n-button>
+              <n-button size="small" tertiary @click="handleAccountLogout">
+                退出账户
+              </n-button>
+            </template>
+          </n-space>
+        </n-space>
+      </div>
+
       <!-- Token导入区域 -->
       <a-modal
         class="token-import-modal"
@@ -618,6 +676,12 @@ import singleBinTokenForm from "./singlebin.vue";
 import WxQrcodeForm from "./wxqrcode.vue";
 
 import { useTokenStore, selectedTokenId } from "@/stores/tokenStore";
+import { useAuthStore } from "@/stores/auth";
+import {
+  uploadCloudSnapshot as uploadSnapshot,
+  fetchCloudSnapshot,
+  applyCloudSnapshot,
+} from "@/api/cloudSync";
 import {
   Add,
   Copy,
@@ -639,8 +703,9 @@ import { useRouter } from "vue-router";
 import { transformToken, scheduleAuthUserRequest } from "@/utils/token";
 import { $emit } from "@/stores/events/index.ts";
 import useIndexedDB from "@/hooks/useIndexedDB";
+const indexedDb = useIndexedDB();
 const { getArrayBuffer, storeArrayBuffer, deleteArrayBuffer, clearAll } =
-  useIndexedDB();
+  indexedDb;
 // 接收路由参数
 const props = defineProps({
   token: String,
@@ -655,6 +720,7 @@ const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
 const tokenStore = useTokenStore();
+const authStore = useAuthStore();
 
 // 限流等待状态
 const rateLimitWaiting = ref(false);
@@ -671,6 +737,7 @@ const editingToken = ref(null);
 const importMethod = ref("manual");
 const refreshingTokens = ref(new Set());
 const connectingTokens = ref(new Set());
+const cloudSyncing = ref(false);
 // 从localStorage读取上次的视图模式，默认为列表视图
 const viewMode = ref(localStorage.getItem("tokenViewMode") || "list");
 const dragIndex = ref(null);
@@ -1341,6 +1408,69 @@ const handleBulkAction = (key) => {
   }
 };
 
+const handleCloudUpload = async () => {
+  if (!authStore.isAuthenticated) {
+    router.push("/login");
+    return;
+  }
+
+  try {
+    cloudSyncing.value = true;
+    const result = await uploadSnapshot(tokenStore, indexedDb);
+    message.success(
+      `已上传到云端：${result.tokenCount} 个Token，${result.binCount} 个BIN数据`,
+    );
+  } catch (error) {
+    message.error(error.message || "上传云端失败");
+  } finally {
+    cloudSyncing.value = false;
+  }
+};
+
+const handleCloudDownload = () => {
+  if (!authStore.isAuthenticated) {
+    router.push("/login");
+    return;
+  }
+
+  dialog.warning({
+    title: "下载云端数据",
+    content:
+      "这会用云端保存的数据覆盖当前浏览器里的Token列表和BIN数据。继续前建议先导出本地备份。",
+    positiveText: "下载并覆盖",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        cloudSyncing.value = true;
+        const data = await fetchCloudSnapshot();
+        const result = await applyCloudSnapshot(
+          data.snapshot,
+          tokenStore,
+          indexedDb,
+        );
+
+        if (!result.success) {
+          message.warning(result.message);
+          return;
+        }
+
+        message.success(
+          `已从云端恢复：${result.tokenCount} 个Token，${result.binCount} 个BIN数据`,
+        );
+      } catch (error) {
+        message.error(error.message || "下载云端数据失败");
+      } finally {
+        cloudSyncing.value = false;
+      }
+    },
+  });
+};
+
+const handleAccountLogout = async () => {
+  await authStore.logout();
+  message.success("已退出登录");
+};
+
 const exportTokens = () => {
   try {
     const data = tokenStore.exportTokens();
@@ -1611,6 +1741,7 @@ const handleRateLimitWaiting = (data) => {
 
 // 生命周期
 onMounted(async () => {
+  await authStore.initAuth();
   tokenStore.initTokenStore();
 
   // 监听限流等待事件
@@ -1700,6 +1831,28 @@ onUnmounted(() => {
   margin: 0;
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.cloud-account-bar {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--border-radius-large);
+  box-shadow: var(--shadow-small);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+}
+
+.cloud-account-content {
+  width: 100%;
+}
+
+.cloud-account-info {
+  min-width: 0;
+}
+
+[data-theme="dark"] .cloud-account-bar {
+  background: rgba(45, 55, 72, 0.9);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .import-section {

@@ -154,7 +154,13 @@ import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
-import { PersonCircle, Cube, Ribbon, Settings } from "@vicons/ionicons5";
+import {
+  PersonCircle,
+  Cube,
+  Ribbon,
+  Settings,
+  LockClosed as Lock,
+} from "@vicons/ionicons5";
 
 const router = useRouter();
 const message = useMessage();
@@ -253,7 +259,8 @@ const handleSocialLogin = (provider) => {
   message.info(`${provider === "qq" ? "QQ" : "微信"}登录功能开发中...`);
 };
 
-onMounted(() => {
+onMounted(async () => {
+  await authStore.initAuth();
   // 如果已经登录，直接跳转
   if (authStore.isAuthenticated) {
     router.push("/admin/dashboard");

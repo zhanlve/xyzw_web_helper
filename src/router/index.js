@@ -116,11 +116,21 @@ const my_routes = [
   // 兼容旧路由，重定向到新的token管理页面
   {
     path: '/login',
-    redirect: '/tokens'
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+    meta: {
+      title: '登录',
+      requiresToken: false
+    }
   },
   {
     path: '/register',
-    redirect: '/tokens'
+    name: 'Register',
+    component: () => import('@/views/Register.vue'),
+    meta: {
+      title: '注册',
+      requiresToken: false
+    }
   },
   {
     path: '/game-roles',

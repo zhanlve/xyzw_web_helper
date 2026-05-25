@@ -120,12 +120,14 @@ import { ref, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
-import { PersonCircle, Mail } from "@vicons/ionicons5";
+import { PersonCircle, Mail, LockClosed as Lock } from "@vicons/ionicons5";
 
 const router = useRouter();
 const message = useMessage();
 const authStore = useAuthStore();
 const registerFormRef = ref(null);
+const showTerms = ref(false);
+const showPrivacy = ref(false);
 
 // 注册表单数据
 const registerForm = reactive({
