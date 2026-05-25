@@ -1,6 +1,6 @@
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, shallowRef } from "vue";
 
 import { g_utils, ProtoMsg } from "@/utils/bonProtocol";
 import { gameLogger, tokenLogger, wsLogger } from "@/utils/logger";
@@ -16,8 +16,7 @@ import {
 import { emitPlus, $emit } from "./events/index.js";
 import router from "@/router";
 
-const { getArrayBuffer, storeArrayBuffer, deleteArrayBuffer, clearAll } =
-  useIndexedDB();
+const indexedDb = useIndexedDB();
 
 declare interface TokenData {
   id: string;
@@ -67,9 +66,36 @@ declare interface TokenGroup {
   updatedAt?: string;
 }
 
-export const gameTokens = useLocalStorage<TokenData[]>("gameTokens", []);
+const localGameTokens = useLocalStorage<TokenData[]>("gameTokens", []);
+const cloudTokenMode = ref(false);
+const cloudGameTokens = ref<TokenData[]>([]);
+const cloudArrayBuffers = shallowRef<Record<string, ArrayBuffer>>({});
+
+export const isCloudTokenMode = computed(() => cloudTokenMode.value);
+export const gameTokens = computed<TokenData[]>({
+  get: () => (cloudTokenMode.value ? cloudGameTokens.value : localGameTokens.value),
+  set: (tokens) => {
+    if (cloudTokenMode.value) {
+      cloudGameTokens.value = tokens;
+    } else {
+      localGameTokens.value = tokens;
+    }
+  },
+});
 export const hasTokens = computed(() => gameTokens.value.length > 0);
-export const selectedTokenId = useLocalStorage("selectedTokenId", "");
+const localSelectedTokenId = useLocalStorage<string | null>("selectedTokenId", "");
+const cloudSelectedTokenId = ref<string | null>("");
+export const selectedTokenId = computed<string | null>({
+  get: () =>
+    cloudTokenMode.value ? cloudSelectedTokenId.value : localSelectedTokenId.value,
+  set: (tokenId) => {
+    if (cloudTokenMode.value) {
+      cloudSelectedTokenId.value = tokenId;
+    } else {
+      localSelectedTokenId.value = tokenId;
+    }
+  },
+});
 export const selectedToken = computed(() => {
   return gameTokens.value?.find((token) => token.id === selectedTokenId.value);
 });
@@ -79,7 +105,65 @@ export const selectedRoleInfo = useLocalStorage<any>("selectedRoleInfo", null);
 const activeConnections = useLocalStorage("activeConnections", {});
 
 // Token分组管理
-export const tokenGroups = useLocalStorage<TokenGroup[]>("tokenGroups", []);
+const localTokenGroups = useLocalStorage<TokenGroup[]>("tokenGroups", []);
+const cloudTokenGroups = ref<TokenGroup[]>([]);
+export const tokenGroups = computed<TokenGroup[]>({
+  get: () => (cloudTokenMode.value ? cloudTokenGroups.value : localTokenGroups.value),
+  set: (groups) => {
+    if (cloudTokenMode.value) {
+      cloudTokenGroups.value = groups;
+    } else {
+      localTokenGroups.value = groups;
+    }
+  },
+});
+
+const cloneArrayBuffer = (buffer: ArrayBuffer) => buffer.slice(0);
+
+const getArrayBuffer = async (key: string) => {
+  if (cloudTokenMode.value) {
+    const buffer = cloudArrayBuffers.value[key];
+    return buffer ? cloneArrayBuffer(buffer) : null;
+  }
+
+  return indexedDb.getArrayBuffer(key);
+};
+
+const storeArrayBuffer = async (
+  key: string,
+  data: ArrayBuffer,
+  metadata?: Record<string, any>,
+) => {
+  if (cloudTokenMode.value) {
+    cloudArrayBuffers.value = {
+      ...cloudArrayBuffers.value,
+      [key]: cloneArrayBuffer(data),
+    };
+    return true;
+  }
+
+  return indexedDb.storeArrayBuffer(key, data, metadata);
+};
+
+const deleteArrayBuffer = async (key: string) => {
+  if (cloudTokenMode.value) {
+    const next = { ...cloudArrayBuffers.value };
+    delete next[key];
+    cloudArrayBuffers.value = next;
+    return true;
+  }
+
+  return indexedDb.deleteArrayBuffer(key);
+};
+
+const clearAll = async () => {
+  if (cloudTokenMode.value) {
+    cloudArrayBuffers.value = {};
+    return true;
+  }
+
+  return indexedDb.clearAll();
+};
 
 /**
  * 重构后的Token管理存储
@@ -112,6 +196,81 @@ export const useTokenStore = defineStore("tokens", () => {
   const selectedTokenRoleInfo = computed(() => {
     return gameData.value.roleInfo;
   });
+
+  const resetRuntimeGameData = () => {
+    gameData.value = {
+      roleInfo: null,
+      legionInfo: null,
+      commonActivityInfo: null,
+      bossTowerInfo: null,
+      evoTowerInfo: null,
+      presetTeam: null,
+      battleVersion: null,
+      studyStatus: {
+        isAnswering: false,
+        questionCount: 0,
+        answeredCount: 0,
+        status: "",
+        timestamp: null,
+      },
+      lastUpdated: null,
+    };
+  };
+
+  const closeAllWebSocketConnections = () => {
+    Object.keys(wsConnections.value).forEach((tokenId) => {
+      closeWebSocketConnection(tokenId);
+    });
+  };
+
+  const setCloudTokenSession = ({
+    tokens = [],
+    groups = [],
+    selectedId = "",
+    buffers = {},
+  }: {
+    tokens?: TokenData[];
+    groups?: TokenGroup[];
+    selectedId?: string;
+    buffers?: Record<string, ArrayBuffer>;
+  }) => {
+    closeAllWebSocketConnections();
+
+    const safeSelectedId = tokens.some((token) => token.id === selectedId)
+      ? selectedId
+      : tokens[0]?.id || "";
+
+    cloudTokenMode.value = true;
+    cloudGameTokens.value = tokens;
+    cloudTokenGroups.value = groups;
+    cloudSelectedTokenId.value = safeSelectedId;
+    cloudArrayBuffers.value = Object.fromEntries(
+      Object.entries(buffers).map(([key, buffer]) => [
+        key,
+        cloneArrayBuffer(buffer),
+      ]),
+    );
+    resetRuntimeGameData();
+  };
+
+  const exitCloudTokenMode = () => {
+    closeAllWebSocketConnections();
+    cloudTokenMode.value = false;
+    cloudGameTokens.value = [];
+    cloudTokenGroups.value = [];
+    cloudSelectedTokenId.value = "";
+    cloudArrayBuffers.value = {};
+    resetRuntimeGameData();
+  };
+
+  const getCloudArrayBuffers = () => {
+    return Object.fromEntries(
+      Object.entries(cloudArrayBuffers.value).map(([key, buffer]) => [
+        key,
+        cloneArrayBuffer(buffer),
+      ]),
+    );
+  };
 
   const readStatisticsValue = (stats: any, key: string) => {
     if (!stats) return undefined;
@@ -1566,6 +1725,7 @@ export const useTokenStore = defineStore("tokens", () => {
     hasTokens,
     selectedToken,
     selectedTokenRoleInfo,
+    isCloudTokenMode,
 
     // Token管理方法
     addToken,
@@ -1601,6 +1761,13 @@ export const useTokenStore = defineStore("tokens", () => {
     cleanExpiredTokens,
     upgradeTokenToPermanent,
     initTokenStore,
+    setCloudTokenSession,
+    exitCloudTokenMode,
+    getCloudArrayBuffers,
+    getTokenBuffer: getArrayBuffer,
+    storeTokenBuffer: storeArrayBuffer,
+    deleteTokenBuffer: deleteArrayBuffer,
+    clearTokenBuffers: clearAll,
 
     //游戏内发送消息方法
     sendMessageToLegion,

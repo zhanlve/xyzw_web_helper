@@ -73,12 +73,9 @@ import {
 } from "naive-ui";
 
 import PQueue from "p-queue";
-import useIndexedDB from "@/hooks/useIndexedDB";
 import { getTokenId, transformToken } from "@/utils/token";
 
 const $emit = defineEmits(["cancel", "ok"]);
-
-const { storeArrayBuffer } = useIndexedDB();
 
 const cancel = () => {
   roleList.value = [];
@@ -140,10 +137,10 @@ const uploadBin = (binFile: File) => {
       const tokenId = getTokenId(userToken);
       const roleToken = await transformToken(userToken);
       const roleName = roleMeta.roleName || binFile.name.split(".")?.[0] || "";
-      // 刷新indexDB数据库token数据
-      const saved = await storeArrayBuffer(tokenId, userToken);
+      // 保存原始bin：本地模式写 IndexedDB，云端内存模式只写内存
+      const saved = await tokenStore.storeTokenBuffer(tokenId, userToken);
       if (!saved) {
-        message.error("保存BIN数据到IndexedDB失败");
+        message.error("保存BIN数据失败");
         return;
       }
       

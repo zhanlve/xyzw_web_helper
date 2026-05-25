@@ -77,13 +77,10 @@ import {
 } from "naive-ui";
 
 import PQueue from "p-queue";
-import useIndexedDB from "@/hooks/useIndexedDB";
 import { getTokenId, transformToken, getServerList } from "@/utils/token";
 import { g_utils } from "@/utils/bonProtocol";
 
 const $emit = defineEmits(["cancel", "ok"]);
-
-const { storeArrayBuffer } = useIndexedDB();
 
 const cancel = () => {
   roleList.value = [];
@@ -192,10 +189,10 @@ const addSelectedRole = async (roleInfo: any) => {
     const roleToken = await transformToken(newBinBuffer);
     const roleName = roleInfo.name || `角色_${roleInfo.roleId}`;
 
-    // 刷新indexDB数据库token数据 (保存原始bin)
-    const saved = await storeArrayBuffer(tokenId, newBinBuffer);
+    // 保存原始bin：本地模式写 IndexedDB，云端内存模式只写内存
+    const saved = await tokenStore.storeTokenBuffer(tokenId, newBinBuffer);
     if (!saved) {
-      throw new Error("保存BIN数据到IndexedDB失败，请检查浏览器存储空间或权限");
+      throw new Error("保存BIN数据失败，请检查浏览器存储空间或权限");
     }
 
     let sid = Number(roleInfo.serverId);

@@ -55,16 +55,25 @@ function base64ToArrayBuffer(base64) {
 }
 
 export async function createCloudSnapshot(tokenStore, indexedDb) {
-  const keys = await indexedDb.getAllKeys();
-  const indexedDbTokens = [];
+  let indexedDbTokens = [];
 
-  for (const key of keys) {
-    const data = await indexedDb.getArrayBuffer(key);
-    if (data) {
-      indexedDbTokens.push({
-        key,
-        data: arrayBufferToBase64(data),
-      });
+  if (tokenStore.isCloudTokenMode) {
+    const buffers = tokenStore.getCloudArrayBuffers();
+    indexedDbTokens = Object.entries(buffers).map(([key, data]) => ({
+      key,
+      data: arrayBufferToBase64(data),
+    }));
+  } else {
+    const keys = await indexedDb.getAllKeys();
+
+    for (const key of keys) {
+      const data = await indexedDb.getArrayBuffer(key);
+      if (data) {
+        indexedDbTokens.push({
+          key,
+          data: arrayBufferToBase64(data),
+        });
+      }
     }
   }
 
@@ -75,6 +84,102 @@ export async function createCloudSnapshot(tokenStore, indexedDb) {
     tokenGroups: tokenStore.tokenGroups || [],
     selectedTokenId: tokenStore.selectedTokenId || "",
     indexedDbTokens,
+  };
+}
+
+function parseSnapshot(snapshot) {
+  if (!snapshot) {
+    return null;
+  }
+
+  const tokens = Array.isArray(snapshot.tokens) ? snapshot.tokens : [];
+  const indexedDbTokens = Array.isArray(snapshot.indexedDbTokens)
+    ? snapshot.indexedDbTokens
+    : [];
+  const buffers = {};
+
+  for (const item of indexedDbTokens) {
+    if (item?.key && item?.data) {
+      buffers[item.key] = base64ToArrayBuffer(item.data);
+    }
+  }
+
+  return {
+    tokens,
+    tokenGroups: Array.isArray(snapshot.tokenGroups)
+      ? snapshot.tokenGroups
+      : [],
+    selectedTokenId: snapshot.selectedTokenId || "",
+    indexedDbTokens,
+    buffers,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+export async function loadCloudSnapshotToMemory(snapshot, tokenStore) {
+  const parsed = parseSnapshot(snapshot);
+
+  if (!parsed) {
+    return {
+      success: false,
+      message: "云端还没有保存过数据",
+    };
+  }
+
+  tokenStore.setCloudTokenSession({
+    tokens: parsed.tokens,
+    groups: parsed.tokenGroups,
+    selectedId: parsed.selectedTokenId,
+    buffers: parsed.buffers,
+  });
+
+  return {
+    success: true,
+    tokenCount: parsed.tokens.length,
+    binCount: parsed.indexedDbTokens.length,
+    updatedAt: parsed.updatedAt,
+  };
+}
+
+export async function applyCloudSnapshot(snapshot, tokenStore, indexedDb) {
+  const parsed = parseSnapshot(snapshot);
+
+  if (!parsed) {
+    return {
+      success: false,
+      message: "云端还没有保存过数据",
+    };
+  }
+
+  if (tokenStore.isCloudTokenMode) {
+    tokenStore.exitCloudTokenMode();
+  }
+
+  const importResult = tokenStore.importTokens({ tokens: parsed.tokens });
+  if (!importResult.success) {
+    throw new Error(importResult.message || "Token 数据导入失败");
+  }
+
+  tokenStore.tokenGroups = parsed.tokenGroups;
+  tokenStore.selectedTokenId = parsed.selectedTokenId;
+
+  await indexedDb.clearAll();
+
+  for (const item of parsed.indexedDbTokens) {
+    if (item?.key && item?.data) {
+      await indexedDb.storeArrayBuffer(
+        item.key,
+        base64ToArrayBuffer(item.data),
+        { source: "cloud" }
+      );
+    }
+  }
+
+  return {
+    success: true,
+    tokenCount: parsed.tokens.length,
+    binCount: parsed.indexedDbTokens.length,
+    updatedAt: parsed.updatedAt,
   };
 }
 
@@ -99,47 +204,4 @@ export async function fetchCloudSnapshot() {
   });
 
   return result.data;
-}
-
-export async function applyCloudSnapshot(snapshot, tokenStore, indexedDb) {
-  if (!snapshot) {
-    return {
-      success: false,
-      message: "云端还没有保存过数据",
-    };
-  }
-
-  const tokens = Array.isArray(snapshot.tokens) ? snapshot.tokens : [];
-  const indexedDbTokens = Array.isArray(snapshot.indexedDbTokens)
-    ? snapshot.indexedDbTokens
-    : [];
-
-  const importResult = tokenStore.importTokens({ tokens });
-  if (!importResult.success) {
-    throw new Error(importResult.message || "Token 数据导入失败");
-  }
-
-  tokenStore.tokenGroups = Array.isArray(snapshot.tokenGroups)
-    ? snapshot.tokenGroups
-    : [];
-  tokenStore.selectedTokenId = snapshot.selectedTokenId || "";
-
-  await indexedDb.clearAll();
-
-  for (const item of indexedDbTokens) {
-    if (item?.key && item?.data) {
-      await indexedDb.storeArrayBuffer(
-        item.key,
-        base64ToArrayBuffer(item.data),
-        { source: "cloud" }
-      );
-    }
-  }
-
-  return {
-    success: true,
-    tokenCount: tokens.length,
-    binCount: indexedDbTokens.length,
-    updatedAt: snapshot.updatedAt,
-  };
 }

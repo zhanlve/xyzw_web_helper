@@ -31,6 +31,14 @@
             <n-tag v-else type="warning" size="small">
               未登录：云端同步不可用
             </n-tag>
+            <n-tag
+              v-if="authStore.isAuthenticated && tokenStore.isCloudTokenMode"
+              type="info"
+              size="small"
+              style="margin-left: 8px"
+            >
+              云端内存模式
+            </n-tag>
           </div>
           <n-space align="center" size="small">
             <n-button
@@ -47,6 +55,20 @@
               登录/注册
             </n-button>
             <template v-else>
+              <n-button
+                size="small"
+                type="primary"
+                :loading="cloudSyncing"
+                secondary
+                @click="handleCloudLoad"
+              >
+                <template #icon>
+                  <n-icon>
+                    <SyncCircle />
+                  </n-icon>
+                </template>
+                云端使用
+              </n-button>
               <n-button
                 size="small"
                 type="primary"
@@ -71,6 +93,14 @@
                   </n-icon>
                 </template>
                 下载云端
+              </n-button>
+              <n-button
+                v-if="tokenStore.isCloudTokenMode"
+                size="small"
+                tertiary
+                @click="handleExitCloudMode"
+              >
+                退出云端模式
               </n-button>
               <n-button size="small" tertiary @click="handleAccountLogout">
                 退出账户
@@ -681,6 +711,7 @@ import {
   uploadCloudSnapshot as uploadSnapshot,
   fetchCloudSnapshot,
   applyCloudSnapshot,
+  loadCloudSnapshotToMemory,
 } from "@/api/cloudSync";
 import {
   Add,
@@ -704,8 +735,6 @@ import { transformToken, scheduleAuthUserRequest } from "@/utils/token";
 import { $emit } from "@/stores/events/index.ts";
 import useIndexedDB from "@/hooks/useIndexedDB";
 const indexedDb = useIndexedDB();
-const { getArrayBuffer, storeArrayBuffer, deleteArrayBuffer, clearAll } =
-  indexedDb;
 // 接收路由参数
 const props = defineProps({
   token: String,
@@ -955,10 +984,10 @@ const refreshToken = async (token) => {
       token.importMethod === "wxQrcode" ||
       token.importMethod === "bin"
     ) {
-      let userToken = await getArrayBuffer(token.id);
+      let userToken = await tokenStore.getTokenBuffer(token.id);
       let usedOldKey = false;
       if (!userToken) {
-        userToken = await getArrayBuffer(token.name);
+        userToken = await tokenStore.getTokenBuffer(token.name);
         usedOldKey = true;
       }
       if (userToken) {
@@ -968,9 +997,9 @@ const refreshToken = async (token) => {
           lastRefreshed: Date.now(),
         });
         if (usedOldKey) {
-          await storeArrayBuffer(token.id, userToken);
-          await deleteArrayBuffer(token.name);
-          console.log("已迁移IndexedDB数据:", token.name, "->", token.id);
+          await tokenStore.storeTokenBuffer(token.id, userToken);
+          await tokenStore.deleteTokenBuffer(token.name);
+          console.log("已迁移TokenBuffer数据:", token.name, "->", token.id);
         }
         message.success("Token刷新成功");
       }
@@ -1408,6 +1437,33 @@ const handleBulkAction = (key) => {
   }
 };
 
+const handleCloudLoad = async () => {
+  if (!authStore.isAuthenticated) {
+    router.push("/login");
+    return;
+  }
+
+  try {
+    cloudSyncing.value = true;
+    const data = await fetchCloudSnapshot();
+    const result = await loadCloudSnapshotToMemory(data.snapshot, tokenStore);
+
+    if (!result.success) {
+      message.warning(result.message);
+      return;
+    }
+
+    showImportForm.value = false;
+    message.success(
+      `已进入云端内存模式：${result.tokenCount} 个Token，${result.binCount} 个BIN数据`,
+    );
+  } catch (error) {
+    message.error(error.message || "云端使用失败");
+  } finally {
+    cloudSyncing.value = false;
+  }
+};
+
 const handleCloudUpload = async () => {
   if (!authStore.isAuthenticated) {
     router.push("/login");
@@ -1466,7 +1522,18 @@ const handleCloudDownload = () => {
   });
 };
 
+const handleExitCloudMode = () => {
+  tokenStore.exitCloudTokenMode();
+  if (!tokenStore.hasTokens) {
+    showImportForm.value = true;
+  }
+  message.success("已退出云端内存模式，当前页面已切回本地Token");
+};
+
 const handleAccountLogout = async () => {
+  if (tokenStore.isCloudTokenMode) {
+    tokenStore.exitCloudTokenMode();
+  }
   await authStore.logout();
   message.success("已退出登录");
 };
