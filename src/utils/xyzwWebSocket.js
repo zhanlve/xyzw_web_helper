@@ -133,7 +133,20 @@ export class CommandRegistry {
   /** 构造报文 */
   build(cmd, ack, seq, params) {
     const fn = this.commands.get(cmd);
-    if (!fn) throw new Error(`Unknown cmd: ${cmd}`);
+    if (!fn) {
+      if (!/^[a-zA-Z][\w:.-]*$/.test(cmd)) {
+        throw new Error(`Unknown cmd: ${cmd}`);
+      }
+      return {
+        cmd,
+        ack,
+        seq,
+        time: Date.now(),
+        body: this.encoder?.bon?.encode
+          ? this.encoder.bon.encode({ ...params })
+          : { ...params },
+      };
+    }
     return fn(ack, seq, params);
   }
 }
@@ -292,6 +305,11 @@ export function registerDefaultCommands(reg) {
 
     // 武将升级相关
     .register("hero_heroupgradelevel") //武将升级
+    .register("hero_simulation") // 官方模拟候选
+    .register("tenpalace_getinfo") // 十殿官方模拟候选
+    .register("tenpalace_simulation") // 十殿官方模拟候选
+    .register("palace_simulation") // 十殿官方模拟候选
+    .register("temple_simulation") // 十殿官方模拟候选
     .register("hero_heroupgradeorder") //武将进阶
     .register("hero_rebirth") //武将重新birth
 
@@ -1105,6 +1123,11 @@ export class XyzwWebSocketClient {
       // 升星相关响应映射
       hero_heroupgradestarresp: "hero_heroupgradestar",
       hero_heroupgradelevelresp: "hero_heroupgradelevel",
+      hero_simulationresp: "hero_simulation",
+      tenpalace_getinforesp: "tenpalace_getinfo",
+      tenpalace_simulationresp: "tenpalace_simulation",
+      palace_simulationresp: "palace_simulation",
+      temple_simulationresp: "temple_simulation",
       hero_heroupgradeorderresp: "hero_heroupgradeorder",
       book_upgraderesp: "book_upgrade",
       book_claimpointrewardresp: "book_claimpointreward",
@@ -1167,7 +1190,9 @@ export class XyzwWebSocketClient {
     // 使用小写进行映射匹配，兼容服务端大小写差异
     let originalCmds = responseToCommandMap[respCmdKey];
     if (!originalCmds) {
-      originalCmds = [respCmdKey]; // 如果没有映射，使用响应命令本身（小写）
+      originalCmds = respCmdKey.endsWith("resp")
+        ? [respCmdKey.slice(0, -4), respCmdKey]
+        : [respCmdKey]; // 如果没有映射，使用响应命令本身（小写）
     } else if (typeof originalCmds === "string") {
       originalCmds = [originalCmds]; // 转换为数组
     }

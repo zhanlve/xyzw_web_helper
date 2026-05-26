@@ -1139,6 +1139,10 @@ export const useTokenStore = defineStore("tokens", () => {
       "fight_startboss",
       "fight_startlegionboss",
       "fight_startdungeon",
+      "hero_simulation",
+      "tenpalace_simulation",
+      "palace_simulation",
+      "temple_simulation",
     ];
     if (battleCommands.includes(cmd)) {
       const battleVersion = gameData.value.battleVersion;

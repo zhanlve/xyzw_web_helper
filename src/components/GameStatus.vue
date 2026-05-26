@@ -79,6 +79,9 @@
     <!-- 数据分析导出（提取组件） -->
     <DataAnalysisExportCard v-if="activeSection === 'tools'" />
 
+    <!-- 十殿官方模拟采样（提取组件） -->
+    <TenPalaceOfficialSimulatorCard v-if="activeSection === 'tools'" />
+
     <!-- 消耗活动进度（提取组件） -->
     <ConsumptionProgressCard v-if="activeSection === 'tools'" />
     <!-- 咸王宝库（提取组件） -->
@@ -339,6 +342,7 @@ import HeroUpgradeCard from "./cards/HeroUpgradeCard.vue";
 import ConsumptionProgressCard from "./cards/ConsumptionProgressCard.vue";
 import RefineHelperCard from "./cards/RefineHelperCard.vue";
 import DataAnalysisExportCard from "./cards/DataAnalysisExportCard.vue";
+import TenPalaceOfficialSimulatorCard from "./cards/TenPalaceOfficialSimulatorCard.vue";
 import TowerStatus from "./Tower/TowerStatus.vue";
 import WeirdTowerStatus from "./Tower/WeirdTowerStatus.vue";
 import BossTower from "./Tower/BossTower.vue";
