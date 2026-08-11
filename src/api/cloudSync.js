@@ -87,6 +87,72 @@ export async function createCloudSnapshot(tokenStore, indexedDb) {
   };
 }
 
+function mergeByKey(existingItems, incomingItems, getKey) {
+  const merged = new Map();
+
+  for (const item of existingItems || []) {
+    const key = getKey(item);
+    if (key) merged.set(key, item);
+  }
+
+  // 本次上传的数据优先，确保同一角色的 Token 刷新能同步到云端。
+  for (const item of incomingItems || []) {
+    const key = getKey(item);
+    if (key) merged.set(key, item);
+  }
+
+  return [...merged.values()];
+}
+
+function mergeTokenGroups(existingGroups, incomingGroups) {
+  const merged = new Map();
+
+  for (const group of existingGroups || []) {
+    if (group?.id) merged.set(group.id, group);
+  }
+
+  for (const group of incomingGroups || []) {
+    if (!group?.id) continue;
+    const existing = merged.get(group.id);
+    merged.set(group.id, {
+      ...existing,
+      ...group,
+      tokenIds: [...new Set([...(existing?.tokenIds || []), ...(group.tokenIds || [])])],
+    });
+  }
+
+  return [...merged.values()];
+}
+
+// 云端快照是用户全部角色的集合。上传本机新增角色时必须保留另一设备已有的数据。
+export function mergeCloudSnapshots(existingSnapshot, incomingSnapshot) {
+  const existing = parseSnapshot(existingSnapshot) || {
+    tokens: [],
+    tokenGroups: [],
+    selectedTokenId: "",
+    indexedDbTokens: [],
+  };
+  const incoming = parseSnapshot(incomingSnapshot) || {
+    tokens: [],
+    tokenGroups: [],
+    selectedTokenId: "",
+    indexedDbTokens: [],
+  };
+
+  return {
+    version: Math.max(Number(existingSnapshot?.version) || 1, Number(incomingSnapshot?.version) || 1),
+    updatedAt: new Date().toISOString(),
+    tokens: mergeByKey(existing.tokens, incoming.tokens, (token) => token?.id),
+    tokenGroups: mergeTokenGroups(existing.tokenGroups, incoming.tokenGroups),
+    selectedTokenId: incoming.selectedTokenId || existing.selectedTokenId || "",
+    indexedDbTokens: mergeByKey(
+      existing.indexedDbTokens,
+      incoming.indexedDbTokens,
+      (item) => item?.key,
+    ),
+  };
+}
+
 function parseSnapshot(snapshot) {
   if (!snapshot) {
     return null;
@@ -184,7 +250,9 @@ export async function applyCloudSnapshot(snapshot, tokenStore, indexedDb) {
 }
 
 export async function uploadCloudSnapshot(tokenStore, indexedDb) {
-  const snapshot = await createCloudSnapshot(tokenStore, indexedDb);
+  const localSnapshot = await createCloudSnapshot(tokenStore, indexedDb);
+  const remote = await fetchCloudSnapshot();
+  const snapshot = mergeCloudSnapshots(remote.snapshot, localSnapshot);
   const result = await cloudRequest("/cloud/snapshot", {
     method: "PUT",
     body: JSON.stringify({ snapshot }),

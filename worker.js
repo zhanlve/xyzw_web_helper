@@ -142,6 +142,60 @@ async function getAuthUser(request, env) {
     .first();
 }
 
+function mergeByKey(existingItems, incomingItems, getKey) {
+  const merged = new Map();
+
+  for (const item of existingItems || []) {
+    const key = getKey(item);
+    if (key) merged.set(key, item);
+  }
+
+  for (const item of incomingItems || []) {
+    const key = getKey(item);
+    if (key) merged.set(key, item);
+  }
+
+  return [...merged.values()];
+}
+
+function mergeTokenGroups(existingGroups, incomingGroups) {
+  const merged = new Map();
+
+  for (const group of existingGroups || []) {
+    if (group?.id) merged.set(group.id, group);
+  }
+
+  for (const group of incomingGroups || []) {
+    if (!group?.id) continue;
+    const existing = merged.get(group.id);
+    merged.set(group.id, {
+      ...existing,
+      ...group,
+      tokenIds: [...new Set([...(existing?.tokenIds || []), ...(group.tokenIds || [])])],
+    });
+  }
+
+  return [...merged.values()];
+}
+
+function mergeSnapshots(existingSnapshot, incomingSnapshot) {
+  const existing = existingSnapshot && typeof existingSnapshot === 'object' ? existingSnapshot : {};
+  const incoming = incomingSnapshot && typeof incomingSnapshot === 'object' ? incomingSnapshot : {};
+
+  return {
+    version: Math.max(Number(existing.version) || 1, Number(incoming.version) || 1),
+    updatedAt: new Date().toISOString(),
+    tokens: mergeByKey(existing.tokens, incoming.tokens, (token) => token?.id),
+    tokenGroups: mergeTokenGroups(existing.tokenGroups, incoming.tokenGroups),
+    selectedTokenId: incoming.selectedTokenId || existing.selectedTokenId || '',
+    indexedDbTokens: mergeByKey(
+      existing.indexedDbTokens,
+      incoming.indexedDbTokens,
+      (item) => item?.key,
+    ),
+  };
+}
+
 async function createSession(env, userId) {
   const token = randomHex(32);
   const tokenHash = await sha256Hex(token);
@@ -374,7 +428,20 @@ async function handleApiRequest(request, env, corsHeaders) {
         );
       }
 
-      const payload = JSON.stringify(snapshot);
+      // 服务端再次合并，避免两台设备同时基于旧快照上传时由后一次请求覆盖前一次新增的数据。
+      const existing = await env.DB.prepare(
+        'SELECT payload FROM cloud_snapshots WHERE user_id = ?'
+      )
+        .bind(user.id)
+        .first();
+      let existingSnapshot = null;
+      try {
+        existingSnapshot = existing?.payload ? JSON.parse(existing.payload) : null;
+      } catch {
+        existingSnapshot = null;
+      }
+      const mergedSnapshot = mergeSnapshots(existingSnapshot, snapshot);
+      const payload = JSON.stringify(mergedSnapshot);
       const updatedAt = new Date().toISOString();
 
       await env.DB.prepare(
@@ -388,7 +455,15 @@ async function handleApiRequest(request, env, corsHeaders) {
         .run();
 
       return jsonResponse(
-        { success: true, message: '云端数据已保存', data: { updatedAt } },
+        {
+          success: true,
+          message: '云端数据已保存',
+          data: {
+            updatedAt,
+            tokenCount: mergedSnapshot.tokens.length,
+            binCount: mergedSnapshot.indexedDbTokens.length,
+          },
+        },
         200,
         corsHeaders
       );
